@@ -42,7 +42,9 @@ public class RecipeRepository : IRecipeRepository
 
     public async Task<Recipe?> GetByIdAsync(int id)
     {
-        return await _context.Recipes.FirstOrDefaultAsync(x => x.Id == id);
+        return await _context.Recipes
+            .Include(r => r.AppUser) 
+            .FirstOrDefaultAsync(r => r.Id == id);
     }
 
     public async Task<Recipe> CreateAsync(Recipe recipeModel)

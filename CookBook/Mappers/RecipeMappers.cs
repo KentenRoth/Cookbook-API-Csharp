@@ -13,8 +13,8 @@ public static class RecipeMappers
             Title = recipeModel.Title,
             Description = recipeModel.Description,
             Directions = recipeModel.Directions,
-            Ingredients = recipeModel.Ingredients
-
+            Ingredients = recipeModel.Ingredients,
+            CreatedBy = recipeModel.CreatedBy
         };
     }
 
@@ -25,7 +25,7 @@ public static class RecipeMappers
             Title = recipeDto.Title,
             Description = recipeDto.Description,
             Directions = recipeDto.Directions,
-            Ingredients = recipeDto.Ingredients
+            Ingredients = recipeDto.Ingredients,
         };
     }
 }
