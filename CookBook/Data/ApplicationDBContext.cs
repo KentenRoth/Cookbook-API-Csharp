@@ -13,8 +13,9 @@ public class ApplicationDBContext : IdentityDbContext<AppUser>
 
     }
     public DbSet<Recipe> Recipes { get; set; }
-    
-    
+    public DbSet<RefreshToken> RefreshTokens { get; set; }
+
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);

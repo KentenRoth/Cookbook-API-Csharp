@@ -1,8 +1,10 @@
+using CookBook.Data;
 using CookBook.Dtos.Account;
 using CookBook.Interfaces;
 using CookBook.Models;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace CookBook.Controllers;
 
@@ -15,12 +17,14 @@ public class AccountController : ControllerBase
     private readonly UserManager<AppUser> _userManager;
     private readonly ITokenService _tokenService;
     private readonly SignInManager<AppUser> _signInManager;
+    private readonly ApplicationDBContext _context;
     
-    public AccountController(UserManager<AppUser> userManager, ITokenService tokenService, SignInManager<AppUser> signInManager)
+    public AccountController(UserManager<AppUser> userManager, ITokenService tokenService, SignInManager<AppUser> signInManager, ApplicationDBContext context)
     {
         _userManager = userManager;
         _tokenService = tokenService;
         _signInManager = signInManager;
+        _context = context;
     }
     
     [HttpPost("register")]
@@ -36,7 +40,7 @@ public class AccountController : ControllerBase
                 UserName = registerDto.Username,
                 Email = registerDto.Email
             };
-            
+
             var createdUser = await _userManager.CreateAsync(appUser, registerDto.Password);
 
             if (createdUser.Succeeded)
@@ -44,16 +48,21 @@ public class AccountController : ControllerBase
                 var roleResult = await _userManager.AddToRoleAsync(appUser, "Pending");
                 if (roleResult.Succeeded)
                 {
-                    return Ok(
-                        new NewUserDto
-                        {
-                            Name = appUser.Name,
-                            Username = appUser.UserName,
-                            Email = appUser.Email,
-                            Token = _tokenService.CreateToken(appUser)
-                        }
-                        );
-                } else
+                    var accessToken = _tokenService.CreateToken(appUser);
+                    var refreshToken = await _tokenService.GenerateRefreshToken(appUser);
+
+                    _tokenService.SetAccessTokenCookie(Response, accessToken);
+
+                    return Ok(new
+                    {
+                        Name = appUser.Name,
+                        Username = appUser.UserName,
+                        Email = appUser.Email,
+                        AccessToken = accessToken,
+                        RefreshToken = refreshToken
+                    });
+                }
+                else
                 {
                     return StatusCode(500, roleResult.Errors);
                 }
@@ -73,26 +82,42 @@ public class AccountController : ControllerBase
     public async Task<IActionResult> Login(LoginDto loginDto)
     {
         if (!ModelState.IsValid) return BadRequest(ModelState);
-        
+
         var appUser = await _userManager.FindByNameAsync(loginDto.Username);
         if (appUser == null) return Unauthorized("Invalid username or password");
-        
+
         var signInResult = await _signInManager.CheckPasswordSignInAsync(appUser, loginDto.Password, false);
         if (!signInResult.Succeeded) return Unauthorized("Invalid username or password");
-        
-        return Ok(new NewUserDto
+
+        var accessToken = _tokenService.CreateToken(appUser);
+        var refreshToken = await _tokenService.GenerateRefreshToken(appUser);
+
+        _tokenService.SetAccessTokenCookie(Response, accessToken);
+
+        return Ok(new
         {
             Name = appUser.Name,
             Username = appUser.UserName,
             Email = appUser.Email,
-            Token = _tokenService.CreateToken(appUser)
+            AccessToken = accessToken,
+            RefreshToken = refreshToken
         });
     }
     
     [HttpPost("logout")]
-    public async Task<IActionResult> Logout()
+    public async Task<IActionResult> Logout(string refreshToken)
     {
+        var storedRefreshToken = await _context.RefreshTokens.FirstOrDefaultAsync(t => t.Token == refreshToken);
+        if (storedRefreshToken != null)
+        {
+            storedRefreshToken.IsRevoked = true;
+            _context.Entry(storedRefreshToken).State = EntityState.Modified;
+            await _context.SaveChangesAsync();
+        }
+
+        Response.Cookies.Delete("AccessToken");
+
         await _signInManager.SignOutAsync();
-        return Ok();
+        return Ok("Logged out successfully");
     }
 }
